@@ -1,0 +1,20 @@
+{
+  "name": "youtube-cli",
+  "main": "bin/index.js",
+  "type": "module",
+  "bin": {
+    "yt": "./bin/index.js"
+  },
+  "scripts": {
+    "start": "node ."
+  },
+  "author": "joojdev",
+  "license": "ISC",
+  "dependencies": {
+    "boxen": "^6.2.1",
+    "chalk": "^5.0.0",
+    "inquirer": "^8.2.0",
+    "ora": "^6.0.1",
+    "puppeteer": "^13.1.2"
+  }
+}
