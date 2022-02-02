@@ -1,11 +1,16 @@
 #!/usr/bin/env node
 
-import chalk from 'chalk'
-import boxen from 'boxen'
-import ora from 'ora'
-import inquirer from 'inquirer'
+const chalk = require('chalk')
+const ora = require('ora')
+const inquirer = require('inquirer')
 
-import puppeteer from 'puppeteer'
+const puppeteer = require('puppeteer')
+const ytdl = require('ytdl-core')
+const superagent = require('superagent')
+
+const fs = require('fs')
+const https = require('https')
+const path = require('path')
 
 const orange = '#ed9e4e'
 const purple = '#ab55f2'
@@ -15,6 +20,7 @@ function handleError(error) {
     chalk.bgRed.white('Error!'),
     chalk.red(error)
   ].join`\n`)
+  process.exit(1)
 }
 
 function hexToRGB(hex) {
@@ -58,7 +64,7 @@ async function delay(ms) {
   })
 }
 
-console.typeGradient = async (text, ms = 50) => {
+console.typeGradient = async (text, ms = 20) => {
   const colorArray = linearGradient(orange, purple, text.length)
   const characterArray = colorArray.map((color, index) => {
     return chalk.rgb(
@@ -120,13 +126,12 @@ async function justDownloadSection() {
       {
         name: 'videoId',
         type: 'input',
-        message: 'What is the video ID?',
+        message: textGradient('What is the video ID?'),
         default: 'dQw4w9WgXcQ'
       }
     ])
     .then(({ videoId }) => {
-      console.log(videoId)
-      // TODO: Make download section.
+      downloadSection(videoId)
     })
     .catch((error) => handleError(error))
 }
@@ -217,7 +222,87 @@ async function selectVideoSection(videoArray) {
     ])
     .then(({ video }) => {
       const selectedVideo = videoArray.find((videoDetails) => videoDetails.title == video)
-      // TODO: Make download section.
+      downloadSection(selectedVideo.id)
+    })
+    .catch((error) => handleError(error))
+}
+
+async function downloadSection(videoId) {
+  console.clear()
+  await console.typeGradient('Now, we are going to get the video formats.')
+
+  const loadingSpinner = ora()
+  loadingSpinner.color = 'magenta'
+
+  loadingSpinner.start('Getting video formats...')
+  const videoInfo = await ytdl.getInfo(videoId)
+  loadingSpinner.succeed('Got video formats!')
+  const videoFormats = videoInfo.formats.filter((videoFormat) => videoFormat.hasAudio).map(({ url, mimeType, qualityLabel, audioBitrate, container }) => {
+    return {
+      url,
+      tag: [
+        mimeType,
+        `${audioBitrate}bps`,
+        qualityLabel || undefined
+      ].filter((_) => !!_).join(' '),
+      extension: container,
+      title: videoInfo.videoDetails.title
+    }
+  })
+
+  inquirer
+    .prompt([
+      {
+        name: 'formatTag',
+        type: 'list',
+        message: textGradient('What format is better for you?'),
+        choices: videoFormats.map((videoFormat) => videoFormat.tag)
+      }
+    ])
+    .then(({ formatTag }) => {
+      const selectedFormat = videoFormats.find((videoFormat) => videoFormat.tag == formatTag)
+      
+      inquirer
+      .prompt([
+          {
+            name: 'fileName',
+            type: 'input',
+            message: textGradient('What do you want to call your file?'),
+            default: selectedFormat.title
+          }
+        ])
+        .then(({ fileName }) => {
+          const fileDestiny = path.join(process.cwd(), `${fileName}.${selectedFormat.extension}`)
+          
+          function calculateProgressPercentage(bytesDownloaded, fileSize) {
+            return Math.floor((bytesDownloaded / fileSize * 100))
+          }
+          
+          let bytesDownloaded = 0
+          loadingSpinner.render().start('Downloading video... Progress: 0%')
+          const file = fs.createWriteStream(fileDestiny)
+          https.get(selectedFormat.url, (response) => {
+            const fileSize = Number(response.headers['content-length'])
+            
+            response.on('data', (data => {
+              file.write(data)
+
+              bytesDownloaded += Buffer.byteLength(data)
+              loadingSpinner.text = `Downloading video... Progress: ${calculateProgressPercentage(bytesDownloaded, fileSize)}%`
+            }))
+            
+            response.on('end', () => {
+              file.close()
+              loadingSpinner.succeed('Downloaded video!')
+            })
+          }).on('error', (error) => {
+            loadingSpinner.fail('Error!')
+            fs.unlink(fileDestiny)
+            handleError(error)
+          })
+
+        })
+        .catch((error) => handleError(error))
     })
     .catch((error) => handleError(error))
 }
