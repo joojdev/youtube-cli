@@ -272,7 +272,7 @@ async function downloadSection(videoId) {
           }
         ])
         .then(({ fileName }) => {
-          const fileDestiny = path.join(process.cwd(), `${fileName}.${selectedFormat.extension}`)
+          const fileDestiny = path.join(process.cwd(), `${fileName.trim().replace(/[\\/:*?\"<>|]/g,"").substring(0, 240)}.${selectedFormat.extension}`)
           
           function calculateProgressPercentage(bytesDownloaded, fileSize) {
             return Math.floor((bytesDownloaded / fileSize * 100))
@@ -284,6 +284,11 @@ async function downloadSection(videoId) {
           https.get(selectedFormat.url, (response) => {
             const fileSize = Number(response.headers['content-length'])
             
+            process.on('SIGINT', () => {
+              loadingSpinner.fail('Cancelled!')
+              fs.unlink(fileDestiny, () => process.exit())
+            })
+
             response.on('data', (data => {
               file.write(data)
 
@@ -297,7 +302,7 @@ async function downloadSection(videoId) {
             })
           }).on('error', (error) => {
             loadingSpinner.fail('Error!')
-            fs.unlink(fileDestiny)
+            fs.unlink(fileDestiny, () => {})
             handleError(error)
           })
 
